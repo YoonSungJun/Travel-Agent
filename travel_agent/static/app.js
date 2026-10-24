@@ -1,7 +1,7 @@
 "use strict";
 const $ = (selector) => document.querySelector(selector);
-let trip, step = "flight", aiConfigured = false, saving = false;
-let activeSearch = 0;
+let trip, step = "flight", saving = false;
+let activeSearch = 0, importDraft = null;
 const labels = {flight: "항공권 비교", hotel: "호텔 비교", itinerary: "일정 구성", restaurants: "식당 검색"};
 
 function notify(message, error = false) {
@@ -43,8 +43,10 @@ function fill(form, data) {
 function invalidateAnswer() {
   activeSearch++;
   $("#answer").hidden = true;
-  $("#ask").disabled = !aiConfigured;
-  $("#ask").textContent = "검색·추천 받기";
+  $("#ask").disabled = false;
+  importDraft = null;
+  $("#import-preview").hidden = true;
+  $("#ask").textContent = "ChatGPT 요청문 만들기";
 }
 function selectStep(target) {
   if (!allowed(target)) return;
@@ -53,6 +55,7 @@ function selectStep(target) {
     $("#question").value = "";
   }
   step = target;
+  $("#import-tools").hidden = step !== "itinerary";
   document.querySelectorAll(".step").forEach(node => { node.hidden = node.id !== step; });
   document.querySelectorAll("[data-step]").forEach(button => {
     button.classList.toggle("active", button.dataset.step === step);
@@ -149,7 +152,7 @@ async function mutate(action, data, nextStep) {
     step = nextStep;
     resetActivityForm();
     render();
-    notify("저장했습니다. " + (aiConfigured ? "" : "AI 검색은 환경 설정에 API 키를 입력하면 사용할 수 있어요."));
+    notify("저장했습니다. 현재 여행 상태로 ChatGPT 요청문을 다시 만들 수 있어요.");
   } catch (error) { notify(error.message, true); }
   finally { saving = false; }
 }
@@ -184,32 +187,26 @@ $("#edit-meal").onclick = () => {
 };
 $("#agent-form").onsubmit = async event => {
   event.preventDefault();
-  if (!trip || !aiConfigured) return;
+  if (!trip) return;
   const token = ++activeSearch, version = trip.version;
   $("#ask").disabled = true;
-  $("#ask").textContent = "찾아보는 중…";
+  $("#ask").textContent = "요청문 만드는 중…";
   $("#answer").hidden = true;
   try {
-    const result = await api(`/api/trips/${trip.id}/advice`, {
+    const result = await api(`/api/trips/${trip.id}/prompt`, {
       stage: step, message: $("#question").value, version,
       activity_id: step === "restaurants" ? $("#meal-activity").value : null
     });
     if (token !== activeSearch || version !== trip.version) return;
-    $("#answer-text").textContent = result.text;
-    $("#answer-meta").textContent = `조회 ${new Date(result.checked_at).toLocaleString("ko-KR")}`;
-    $("#sources").replaceChildren(...result.sources.map(source => {
-      const li = element("li"), a = element("a", source.title || source.url);
-      a.href = source.url; a.target = "_blank"; a.rel = "noopener noreferrer";
-      li.append(a); return li;
-    }));
+    $("#prompt-text").value = result.text;
     $("#answer").hidden = false;
-    notify("추천을 확인하고 원하는 후보를 직접 계획에 반영하세요.");
+    notify("요청문을 복사해 ChatGPT에서 질문하세요. 앱에서는 API를 호출하지 않습니다.");
   } catch (error) {
     if (token === activeSearch) notify(error.message, true);
   } finally {
     if (token === activeSearch) {
       $("#ask").disabled = false;
-      $("#ask").textContent = "검색·추천 받기";
+      $("#ask").textContent = "ChatGPT 요청문 만들기";
     }
   }
 };
@@ -227,8 +224,7 @@ $("#new-trip").onclick = async () => {
 };
 (async () => {
   try {
-    const health = await api("/api/health");
-    aiConfigured = health.ai_configured;
+    await api("/api/health");
     const id = localStorage.getItem("travel-trip-id");
     if (id) {
       try { trip = await api(`/api/trips/${encodeURIComponent(id)}`); }
@@ -236,7 +232,46 @@ $("#new-trip").onclick = async () => {
     }
     if (!trip) await newTrip();
     else { step = trip.stage; render(); }
-    notify(aiConfigured ? "여행을 불러왔습니다. 순서대로 계획해보세요." :
-      "일정 편집·저장은 바로 사용할 수 있어요. AI 검색은 환경 설정에 TRAVEL_AGENT_API_KEY를 입력한 뒤 서버를 다시 시작하세요.");
+    notify("ChatGPT 연동 모드 · API 키 없이 사용합니다. 요청문을 복사해 ChatGPT에서 추천받으세요.");
   } catch (error) { notify(`시작하지 못했습니다: ${error.message}`, true); }
 })();
+
+$("#copy-prompt").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($("#prompt-text").value);
+    notify("복사했습니다. ChatGPT에 붙여넣으세요.");
+  } catch {
+    $("#prompt-text").focus();
+    $("#prompt-text").select();
+    notify("자동 복사가 제한됐습니다. 선택된 요청문을 Ctrl+C 또는 복사 메뉴로 복사하세요.");
+  }
+};
+$("#import-text").oninput = () => {
+  importDraft = null;
+  $("#import-preview").hidden = true;
+};
+$("#preview-import").onclick = async () => {
+  if (!trip) return;
+  const version = trip.version, id = trip.id;
+  importDraft = null;
+  $("#import-preview").hidden = true;
+  try {
+    const result = await api(`/api/trips/${id}/import-preview`, {version, text: $("#import-text").value});
+    if (trip.id !== id || trip.version !== version || step !== "itinerary") return;
+    importDraft = result;
+    $("#import-summary").textContent = result.activities.map(a =>
+      `${a.day} ${a.start.slice(0,5)}–${a.end.slice(0,5)} · ${a.title} · ${a.area}`
+    ).join("\n");
+    $("#import-preview").hidden = false;
+    notify("미리보기입니다. 아직 저장하지 않았습니다.");
+  } catch (error) { notify(error.message, true); }
+};
+$("#apply-import").onclick = () => {
+  if (!importDraft || importDraft.version !== trip.version) {
+    notify("일정이 변경됐습니다. 미리보기를 다시 실행하세요.", true);
+    return;
+  }
+  if (confirm("기존 일정 전체를 미리보기 일정으로 교체할까요? 항공권과 호텔은 유지됩니다.")) {
+    mutate("activities", importDraft.activities, "itinerary");
+  }
+};

@@ -1,48 +1,56 @@
 import json
+import socket
 
-import httpx2
 import pytest
-from openai import OpenAI
 
-from travel_agent.agent import AgentRequest, advise
+from travel_agent.agent import AgentRequest, build_prompt, preview_import
 
 
-def test_restaurant_search_uses_current_schedule_and_sources(trip):
-    def respond(request):
-        data = json.loads(request.content)
-        assert data["tools"] == [{"type": "web_search"}]
-        assert data["store"] is False
-        context = json.loads(data["input"])
-        assert context["selected_activity"]["area"] == "Asakusa"
-        assert context["trip"]["hotel"]["area"] == "Ueno"
-        return httpx2.Response(200, json={
-            "id": "resp_offline", "object": "response", "created_at": 0,
-            "status": "completed", "model": data["model"], "output": [{
-                "id": "msg_1", "type": "message", "role": "assistant", "status": "completed",
-                "content": [{"type": "output_text", "text": "Asakusa restaurant candidate",
-                             "annotations": [{"type": "url_citation", "url": "https://example.com",
-                                              "title": "Source", "start_index": 0, "end_index": 7}]}]
-            }]
-        })
-
+def test_prompt_uses_latest_restaurant_context_without_network(trip, monkeypatch):
+    def forbid(*args, **kwargs):
+        raise AssertionError("Network must not be used")
+    monkeypatch.setattr(socket, "create_connection", forbid)
+    monkeypatch.setenv("TRAVEL_AGENT_API_KEY", "unused-sentinel")
     trip.activities[0].area = "Asakusa"
-    req = AgentRequest(stage="restaurants", message="Lunch nearby", activity_id="lunch", version=0)
-    with OpenAI(api_key="offline-test-only", http_client=httpx2.Client(
-        transport=httpx2.MockTransport(respond)
-    )) as client:
-        result = advise(trip, req, client=client)
-    assert result["text"] == "Asakusa restaurant candidate"
-    assert result["sources"] == [{"url": "https://example.com", "title": "Source"}]
-    assert trip.activities[0].area == "Asakusa"
+    result = build_prompt(trip, AgentRequest(stage="restaurants", message="Lunch nearby",
+                                            activity_id="lunch", version=0))
+    assert '"area": "Asakusa"' in result["text"]
+    assert '"area": "Ueno"' in result["text"]
+    assert "unused-sentinel" not in result["text"]
+    assert result["version"] == 0
 
 
-def test_deleted_activity_cannot_drive_restaurant_search(trip):
-    req = AgentRequest(stage="restaurants", message="Lunch", activity_id="deleted", version=0)
+def test_deleted_activity_rejected(trip):
     with pytest.raises(ValueError, match="선택"):
-        advise(trip, req)
+        build_prompt(trip, AgentRequest(stage="restaurants", message="Lunch",
+                                       activity_id="deleted", version=0))
 
 
-def test_missing_key_does_not_generate_fake_recommendations(trip, monkeypatch):
-    monkeypatch.delenv("TRAVEL_AGENT_API_KEY", raising=False)
-    with pytest.raises(RuntimeError, match="TRAVEL_AGENT_API_KEY"):
-        advise(trip, AgentRequest(stage="itinerary", message="Plan", version=0))
+def test_itinerary_prompt_includes_import_contract(trip):
+    result = build_prompt(trip, AgentRequest(stage="itinerary", message="Plan", version=0))
+    assert '"activities"' in result["text"] and "JSON" in result["text"]
+
+
+def test_import_preview_does_not_mutate_trip(trip, activity):
+    before = trip.model_dump_json()
+    item = activity.model_dump(mode="json", exclude={"id"})
+    item["area"] = "Asakusa"
+    text = '```json\n' + json.dumps({"activities": [item]}) + '\n```'
+    result = preview_import(trip, text)
+    assert result["activities"][0]["area"] == "Asakusa"
+    assert result["activities"][0]["id"]
+    assert trip.model_dump_json() == before
+
+
+@pytest.mark.parametrize("text", ['not JSON', '{"activities": []}', '{"extra": []}',
+                                 '```json\n{}\n```\n```json\n{}\n```'])
+def test_bad_import_rejected(trip, text):
+    with pytest.raises(ValueError):
+        preview_import(trip, text)
+
+
+def test_outside_trip_import_rejected(trip, activity):
+    item = activity.model_dump(mode="json")
+    item["day"] = "2026-11-01"
+    with pytest.raises(ValueError, match="도착 시간"):
+        preview_import(trip, json.dumps({"activities": [item]}))

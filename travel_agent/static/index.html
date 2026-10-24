@@ -56,13 +56,23 @@
       </section>
     </section>
     <aside class="panel assistant">
-      <p class="eyebrow">YOUR TRAVEL AGENT</p><h2 id="agent-heading">항공권 비교 도우미</h2>
+      <p class="eyebrow">PLAN WITH CHATGPT</p><h2 id="agent-heading">항공권 비교 도우미</h2>
       <p id="agent-context">출발지, 목적지, 날짜, 인원, 예산과 원하는 조건을 알려주세요.</p>
-      <form id="agent-form"><label for="question">에이전트에게 요청</label><textarea id="question" rows="5" required maxlength="4000" placeholder="예: 11월 중순 인천→도쿄 왕복, 성인 2명. 수하물 포함 총액과 시간대를 비교해줘."></textarea><button type="submit" id="ask">검색·추천 받기</button></form>
-      <p class="hint">예약 사이트의 최종 가격·재고는 직접 확인하세요. AI 추천은 확정 정보를 자동으로 바꾸지 않습니다.</p>
-      <section id="answer" aria-live="polite" hidden><p id="answer-meta" class="eyebrow"></p><div id="answer-text"></div><ul id="sources"></ul></section>
+      <form id="agent-form"><label for="question">ChatGPT에 보낼 요청</label><textarea id="question" rows="5" required maxlength="4000" placeholder="예: 11월 중순 인천→도쿄 왕복, 성인 2명. 수하물 포함 총액과 시간대를 비교해줘."></textarea><button type="submit" id="ask">ChatGPT 요청문 만들기</button></form>
+      <p class="hint">요청문을 복사해 ChatGPT에서 직접 질문하세요. 이 앱은 AI API를 호출하지 않습니다. ChatGPT의 구독·사용 한도가 적용됩니다.</p>
+      <section id="answer" aria-live="polite" hidden>
+        <label for="prompt-text">복사할 요청문</label><textarea id="prompt-text" rows="10" readonly></textarea>
+        <div class="actions"><button id="copy-prompt" type="button">요청문 복사</button><a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">ChatGPT 열기 ↗</a></div>
+        <p class="hint">ChatGPT에 붙여넣고 답변받으세요. 링크를 여는 것만으로 여행 정보가 전송되지는 않습니다. 항공·호텔·식당 후보는 왼쪽 확정 정보나 일정 메모에 반영하세요.</p>
+      </section>
+      <section id="import-tools" hidden>
+        <h3>ChatGPT 일정 가져오기</h3><p class="hint">답변의 일정 JSON 코드 블록을 붙여넣으세요. 미리보기 후 확인하면 기존 일정 전체를 교체합니다.</p>
+        <label for="import-text">일정 JSON</label><textarea id="import-text" rows="7" maxlength="60000"></textarea>
+        <button id="preview-import" type="button">일정 미리보기</button>
+        <section id="import-preview" hidden><div id="import-summary" class="summary"></div><button id="apply-import" type="button">확인한 일정으로 교체</button></section>
+      </section>
     </aside>
   </div>
-  <footer>차곡차곡 쌓이는 나만의 여행 · 변경사항은 자동으로 저장됩니다.</footer>
+  <footer>차곡차곡 쌓이는 나만의 여행 · 저장 버튼으로 확정한 여행 계획을 보관합니다.</footer>
 </main>
 </body></html>

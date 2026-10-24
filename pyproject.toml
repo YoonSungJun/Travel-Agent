@@ -7,7 +7,7 @@ name = "travel-agent"
 version = "0.1.0"
 description = "항공권부터 식당까지, 순서대로 계획하는 여행 에이전트"
 requires-python = ">=3.12"
-dependencies = ["openai==3.37.0", "pydantic==2.14.1"]
+dependencies = ["pydantic==2.14.1"]
 
 [project.optional-dependencies]
 dev = ["pytest==9.1.1", "ruff==0.17.2"]

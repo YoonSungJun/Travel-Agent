@@ -6,10 +6,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from openai import APIError
 from pydantic import Field, ValidationError
 
-from .agent import AgentRequest, advise
+from .agent import AgentRequest, ImportRequest, build_prompt, preview_import
 from .domain import Activity, Flight, Hotel, Model
 from .store import ConflictError, Store
 
@@ -58,7 +57,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, (Path(__file__).parent / "static" / name).read_bytes(), mime)
         if path == "/api/health":
             return self.reply(200, {"ok": True,
-                                    "ai_configured": bool(os.environ.get("TRAVEL_AGENT_API_KEY"))})
+                                    "mode": "chatgpt_manual", "api_calls_enabled": False})
         parts = path.strip("/").split("/")
         if len(parts) == 3 and parts[:2] == ["api", "trips"]:
             try:
@@ -90,17 +89,17 @@ class Handler(BaseHTTPRequestHandler):
             trip = self.store.get(parts[2])
             action = parts[3]
             models = {"flight": FlightUpdate, "hotel": HotelUpdate,
-                      "activities": ActivitiesUpdate, "advice": AgentRequest}
+                      "activities": ActivitiesUpdate, "prompt": AgentRequest,
+                      "import-preview": ImportRequest}
             if action not in models:
                 return self.reply(404, {"error": "알 수 없는 작업입니다."})
             request = models[action].model_validate(payload)
             if request.version != trip.version:
                 raise ConflictError("일정이 변경되었습니다. 새로고침 후 다시 요청하세요.")
-            if action == "advice":
-                result = advise(trip, request)
-                if self.store.get(trip.id).version != trip.version:
-                    raise ConflictError("검색 중 일정이 바뀌었습니다. 최신 일정으로 다시 검색하세요.")
-                return self.reply(200, result)
+            if action == "prompt":
+                return self.reply(200, build_prompt(trip, request))
+            if action == "import-preview":
+                return self.reply(200, preview_import(trip, request.text))
             if action == "flight":
                 trip.set_flight(request.data)
             elif action == "hotel":
@@ -124,8 +123,6 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(409, {"error": str(exc)})
         except RuntimeError as exc:
             self.reply(503, {"error": str(exc)})
-        except APIError:
-            self.reply(502, {"error": "AI 요청에 실패했습니다. 키·모델 권한·네트워크 설정을 확인하세요."})
         except Exception:  # noqa: BLE001 -- keep the HTTP boundary from exposing internals
             self.reply(500, {"error": "처리 중 오류가 발생했습니다. 잠시 후 다시 시도하세요."})
 

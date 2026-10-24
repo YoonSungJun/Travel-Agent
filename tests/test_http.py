@@ -39,11 +39,13 @@ def test_early_hotel_is_rejected(server, hotel):
     assert status == 400 and "먼저" in result["error"]
 
 
-def test_missing_key_is_actionable(server):
+def test_prompt_works_without_key_and_paid_endpoint_is_removed(server):
     _, trip = call(server, "/api/trips", {})
-    status, result = call(server, f"/api/trips/{trip['id']}/advice",
-                          {"version": 0, "stage": "flight", "message": "Find flights"})
-    assert status == 503 and "TRAVEL_AGENT_API_KEY" in result["error"]
+    body = {"version": 0, "stage": "flight", "message": "Find flights"}
+    path = f"/api/trips/{trip['id']}"
+    status, result = call(server, path + "/prompt", body)
+    assert status == 200 and "Find flights" in result["text"]
+    assert call(server, path + "/advice", body)[0] == 404
 
 
 def test_cross_origin_mutation_rejected(server):
@@ -61,7 +63,7 @@ def test_bad_input_does_not_mutate(server, payload):
 
 def test_unknown_trip_and_health(server):
     assert call(server, "/api/trips/invalid")[0] == 404
-    assert call(server, "/api/health")[1] == {"ok": True, "ai_configured": False}
+    assert call(server, "/api/health")[1] == {"ok": True, "mode": "chatgpt_manual", "api_calls_enabled": False}
 
 
 def test_static_ui_is_served(server):
@@ -69,3 +71,21 @@ def test_static_ui_is_served(server):
         assert response.status == 200
         assert "차곡여행" in response.read().decode()
         assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+
+
+def test_import_preview_and_explicit_apply(server, flight, hotel, activity):
+    _, trip = call(server, "/api/trips", {})
+    path = f"/api/trips/{trip['id']}"
+    for action, model in [("flight", flight), ("hotel", hotel)]:
+        _, trip = call(server, path + "/" + action,
+                       {"version": trip["version"], "data": model.model_dump(mode="json")})
+    body = {"version": trip["version"], "text": json.dumps({
+        "activities": [activity.model_dump(mode="json")]})}
+    status, draft = call(server, path + "/import-preview", body)
+    assert status == 200
+    assert call(server, path)[1]["activities"] == []
+    status, saved = call(server, path + "/activities",
+                         {"version": draft["version"], "data": draft["activities"]})
+    assert status == 200 and saved["activities"][0]["id"] == activity.id
+    assert saved["flight"] == trip["flight"] and saved["hotel"] == trip["hotel"]
+    assert call(server, path + "/import-preview", body)[0] == 409
