@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>차곡여행 · 여행 계획 에이전트</title><link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<header><a href="/" class="brand">차곡여행<span>TRAVEL PLANNER</span></a><button id="new-trip" class="quiet">새 여행 만들기</button></header>
+<main>
+  <section class="intro"><p class="eyebrow">ONE STEP AT A TIME</p><h1>떠날 시간부터,<br>다음 한 끼까지.</h1><p>항공권을 정하고, 머물 곳을 찾고, 나만의 하루를 채워보세요.</p></section>
+  <p id="notice" role="status" aria-live="polite">여행을 불러오는 중…</p>
+  <nav aria-label="계획 단계" id="steps">
+    <button data-step="flight">01 항공권</button><button data-step="hotel">02 호텔</button>
+    <button data-step="itinerary">03 일정</button><button data-step="restaurants">04 식당</button>
+  </nav>
+  <div class="workspace">
+    <section class="panel">
+      <section id="flight" class="step">
+        <p class="eyebrow">FLIGHT FIRST</p><h2>여행의 시작과 끝을 정해요</h2><p>후보를 비교한 뒤 선택한 항공 정보를 입력하세요. 모든 날짜·시간은 목적지 현지 기준입니다.</p>
+        <form id="flight-form">
+          <div class="pair"><label>출발지<input name="origin" required placeholder="인천 ICN" maxlength="100"></label><label>목적지<input name="destination" required placeholder="도쿄 NRT" maxlength="100"></label></div>
+          <div class="pair"><label>현지 도착일<input name="arrival_date" type="date" required></label><label>현지 도착 시간<input name="arrival_time" type="time" required></label></div>
+          <div class="pair"><label>귀국편 현지 출발일<input name="departure_date" type="date" required></label><label>귀국편 현지 출발 시간<input name="departure_time" type="time" required></label></div>
+          <label>선택한 항공편·가격·조건<textarea name="description" placeholder="편명, 총액과 통화, 인원, 수하물, 취소 조건" maxlength="1000"></textarea></label>
+          <p class="hint">항공 정보를 변경하면 호텔과 일정이 초기화됩니다.</p><button type="submit">항공권 확정 → 호텔 선택</button>
+        </form>
+      </section>
+      <section id="hotel" class="step" hidden>
+        <p class="eyebrow">YOUR HOME BASE</p><h2>여행의 기준점이 될 숙소</h2><p id="flight-summary"></p>
+        <form id="hotel-form">
+          <label>호텔 이름<input name="name" required maxlength="200"></label><label>주소·지역<input name="area" required placeholder="가까운 역이나 주소까지 입력하면 좋아요" maxlength="200"></label>
+          <div class="pair"><label>체크인<input name="check_in" type="date" required></label><label>체크아웃<input name="check_out" type="date" required></label></div>
+          <label>객실·총액·조건<textarea name="description" placeholder="객실 수, 세금 포함 총액, 취소 조건" maxlength="1000"></textarea></label>
+          <p class="hint">숙소 정보를 변경하면 기존 일정이 초기화됩니다.</p><button type="submit">호텔 확정 → 일정 만들기</button>
+        </form>
+      </section>
+      <section id="itinerary" class="step" hidden>
+        <p class="eyebrow">MAKE ROOM FOR THE DAY</p><h2>계획은 언제든 바꿀 수 있으니까</h2><p id="hotel-summary"></p>
+        <div id="schedule"></div>
+        <form id="activity-form">
+          <h3 id="activity-heading">일정 추가</h3><input name="id" type="hidden">
+          <label>날짜<input name="day" type="date" required></label>
+          <div class="pair"><label>시작<input name="start" type="time" required></label><label>종료<input name="end" type="time" required></label></div>
+          <label>할 일<input name="title" required placeholder="미술관 관람 / 점심 식사" maxlength="200"></label>
+          <label>장소·지역<input name="area" required placeholder="주소 또는 근처 역" maxlength="200"></label>
+          <label>종류<select name="kind"><option value="sight">관광</option><option value="meal">식사</option><option value="transit">이동</option><option value="rest">휴식</option></select></label>
+          <label>메모<textarea name="notes" placeholder="예약 시간, 선택한 식당, 확인할 사항" maxlength="2000"></textarea></label>
+          <div class="actions"><button type="submit">일정 저장</button><button type="button" id="cancel-edit" class="quiet" hidden>수정 취소</button></div>
+        </form>
+      </section>
+      <section id="restaurants" class="step" hidden>
+        <p class="eyebrow">A TABLE ALONG THE WAY</p><h2>그 시간, 그 장소에서 먹을 한 끼</h2><p>일정을 선택하면 위치·시간·전후 동선을 기준으로 식당을 찾습니다. 일정이 바뀌면 다시 검색하세요.</p>
+        <label>기준 일정<select id="meal-activity"></select></label><div id="meal-context" class="summary"></div>
+        <p class="hint">찾은 식당은 일정의 장소·메모에 저장할 수 있어요.</p><button id="edit-meal" class="quiet">선택한 일정 편집</button>
+      </section>
+    </section>
+    <aside class="panel assistant">
+      <p class="eyebrow">YOUR TRAVEL AGENT</p><h2 id="agent-heading">항공권 비교 도우미</h2>
+      <p id="agent-context">출발지, 목적지, 날짜, 인원, 예산과 원하는 조건을 알려주세요.</p>
+      <form id="agent-form"><label for="question">에이전트에게 요청</label><textarea id="question" rows="5" required maxlength="4000" placeholder="예: 11월 중순 인천→도쿄 왕복, 성인 2명. 수하물 포함 총액과 시간대를 비교해줘."></textarea><button type="submit" id="ask">검색·추천 받기</button></form>
+      <p class="hint">예약 사이트의 최종 가격·재고는 직접 확인하세요. AI 추천은 확정 정보를 자동으로 바꾸지 않습니다.</p>
+      <section id="answer" aria-live="polite" hidden><p id="answer-meta" class="eyebrow"></p><div id="answer-text"></div><ul id="sources"></ul></section>
+    </aside>
+  </div>
+  <footer>차곡차곡 쌓이는 나만의 여행 · 변경사항은 자동으로 저장됩니다.</footer>
+</main>
+</body></html>
